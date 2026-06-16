@@ -10,7 +10,7 @@ data/*.zip
 
 
 
-data/synthetic_mechanical/generated/normal/
+
 data/synthetic_mechanical/generated/component_masks/
 data/synthetic_mechanical/generated/dataset_preview.png
 
