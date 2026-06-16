@@ -1,0 +1,14 @@
+{
+  "dataset": "NASA C-MAPSS pooled",
+  "subsets": [
+    "FD001",
+    "FD002",
+    "FD003",
+    "FD004"
+  ],
+  "feature_count": 175,
+  "validation_auc": 0.9905959040967736,
+  "rmse": 17.836131699282237,
+  "mae": 12.655797004699707,
+  "r2": 0.8146612048149109
+}
