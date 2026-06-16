@@ -9,8 +9,8 @@
   "image_path": "anomaly/corrosion/Generated image 2_corrosion_008.png",
   "evidence": {
     "model": "facebook/dinov2-base",
-    "image_threshold": 0.0029801358468830585,
-    "pixel_threshold": 0.05001652240753174,
+    "image_threshold": 0.008287952281534672,
+    "pixel_threshold": 0.057987332344055176,
     "normal_memory_sources": [
       "Generated image 1.png",
       "Generated image 2.png"

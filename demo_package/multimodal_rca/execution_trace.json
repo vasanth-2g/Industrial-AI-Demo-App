@@ -1,0 +1,23 @@
+{
+  "scenario_id": "DEMO-MULTIMODAL-001",
+  "steps": [
+    "load_component_contracts",
+    "normalize_evidence",
+    "fuse_evidence",
+    "retrieve_knowledge",
+    "generate_rule_rca",
+    "validate_schema_citations_and_safety",
+    "prepare_reasoning_model_input"
+  ],
+  "inputs": {
+    "telemetry_contract": "/workspace/notebooks/telemetrics/artifacts/cmapss/fd001/risk/telemetry_contract_example.json",
+    "vision_contract": "/workspace/notebooks/vision/artifacts/synthetic_mechanical/dinov2/vision_contract_example.json",
+    "rag_contract": "/workspace/notebooks/knowledge/artifacts/rag/rag_contract_example.json"
+  },
+  "outputs": {
+    "normalized_evidence": "/workspace/notebooks/integration/artifacts/multimodal_rule_rca/normalized_evidence.json",
+    "rule_rca": "/workspace/notebooks/integration/artifacts/multimodal_rule_rca/rule_rca_output.json",
+    "reasoning_input": "/workspace/notebooks/integration/artifacts/multimodal_rule_rca/reasoning_input.json"
+  },
+  "result": "passed"
+}

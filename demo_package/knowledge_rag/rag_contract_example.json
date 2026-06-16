@@ -1,0 +1,68 @@
+{
+  "query_id": "RAG-SYNTH-MECH-001",
+  "scenario_id": "SYNTH-MECH-001",
+  "query": "robot joint critical degradation; predicted RUL 12.0 cycles; failure risk 0.91; visual surface anomaly localized by heatmap; event codes E204; safe response inspection gearbox bearing vibration",
+  "latency_ms": 11.129822582006454,
+  "results": [
+    {
+      "document_id": "ERR-E204",
+      "title": "E204 Excessive Vibration Event",
+      "section": "Code definition",
+      "revision": "1.0",
+      "source_status": "synthetic",
+      "semantic_score": 0.5609179139137268,
+      "keyword_score": 1.0,
+      "score": 0.6706884354352951,
+      "text": "E204 denotes vibration above the configured operating envelope. Possible causes include bearing degradation, gearbox damage, misalignment, loose mounting, or abnormal load. Inspect evidence from other modalities before assigning a root cause."
+    },
+    {
+      "document_id": "SOP-GBX-004",
+      "title": "Gearbox Degradation Inspection",
+      "section": "Inspection",
+      "revision": "1.1",
+      "source_status": "synthetic",
+      "semantic_score": 0.670494019985199,
+      "keyword_score": 0.2222222222222222,
+      "score": 0.5584260705444548,
+      "text": "Low remaining useful life together with rising vibration or temperature can indicate gearbox or bearing degradation. Inspect lubrication level, gear backlash, bearing play, fastener torque, and abnormal noise. Confirm the cause before replacing parts."
+    },
+    {
+      "document_id": "SOP-SAFE-001",
+      "title": "Abnormal Robot Joint Safe Response",
+      "section": "Immediate response",
+      "revision": "1.0",
+      "source_status": "synthetic",
+      "semantic_score": 0.5913259387016296,
+      "keyword_score": 0.3333333333333333,
+      "score": 0.5268277873595556,
+      "text": "When telemetry indicates critical degradation or an inspection shows a structural surface anomaly, place the robot in a safe state, isolate motion energy, and prevent automatic restart. A qualified technician must inspect the affected joint before return to service. Do not infer component replacement from an anomaly score alone."
+    },
+    {
+      "document_id": "CHECK-ALIGN-009",
+      "title": "Joint Alignment Inspection Checklist",
+      "section": "Alignment",
+      "revision": "1.0",
+      "source_status": "synthetic",
+      "semantic_score": 0.5480325222015381,
+      "keyword_score": 0.14814814814814814,
+      "score": 0.4480614286881906,
+      "text": "For suspected misalignment, verify mounting surfaces, coupling offset, shaft runout, fastener condition, and repeatability under low load. Misalignment can produce periodic vibration and wear."
+    },
+    {
+      "document_id": "GUIDE-CRK-003",
+      "title": "Structural Crack Inspection",
+      "section": "Surface discontinuity",
+      "revision": "1.0",
+      "source_status": "synthetic",
+      "semantic_score": 0.5072108507156372,
+      "keyword_score": 0.25925925925925924,
+      "score": 0.44522295285154273,
+      "text": "A suspected crack or linear surface discontinuity requires close visual inspection and an appropriate nondestructive examination. Remove the asset from high-load service until the indication is confirmed. Do not classify heatmap localization as crack proof."
+    }
+  ],
+  "limitations": [
+    "The maintenance documents are synthetic demonstration content.",
+    "Retrieved passages are advisory and not manufacturer procedures.",
+    "The reasoning layer must cite only document IDs in these results."
+  ]
+}

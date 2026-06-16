@@ -283,7 +283,9 @@ def available_citations(preferred_ids):
     ]
 
 
-if status == "critical" and vision_detected:
+telemetry_alert = bool(telemetry.get("alert", failure_risk >= 0.5))
+
+if status == "critical" and telemetry_alert and vision_detected:
     root_cause = (
         "Mechanical degradation is suspected, with an unresolved visual "
         "surface anomaly requiring inspection."
@@ -293,7 +295,7 @@ if status == "critical" and vision_detected:
         "Misalignment or loose mounting",
         "Sensor/model mismatch between independent demo modalities",
     ]
-elif status in {"critical", "warning"}:
+elif status in {"critical", "warning"} and telemetry_alert:
     root_cause = (
         "Telemetry indicates degradation risk; the physical cause remains "
         "unconfirmed."
@@ -379,13 +381,26 @@ if status == "critical":
             "citations": available_citations(["GUIDE-CRK-003"]),
         },
     ]
-elif status == "warning":
+elif status == "warning" and telemetry_alert:
     recommended_actions = [
         {
             "priority": 1,
             "action": "Schedule inspection and increase monitoring frequency.",
             "citations": available_citations([
                 "SOP-GBX-004", "ERR-E204"
+            ]),
+        }
+    ]
+elif status == "warning" and vision_detected:
+    recommended_actions = [
+        {
+            "priority": 1,
+            "action": (
+                "Inspect the localized visual anomaly region and compare it "
+                "with a clean reference image before assigning a defect class."
+            ),
+            "citations": available_citations([
+                "SOP-SAFE-001", "GUIDE-CRK-003"
             ]),
         }
     ]

@@ -1,0 +1,18 @@
+{
+  "scenario_id": "CMAPSS-FD001-001",
+  "asset_id": "ENGINE-001",
+  "anomaly_score": 9.042365491040982e-06,
+  "failure_risk": 9.042365491040982e-06,
+  "predicted_rul": 125.0,
+  "severity": "normal",
+  "alert": false,
+  "evidence": {
+    "last_observed_cycle": 31,
+    "failure_horizon_cycles": 30,
+    "alert_threshold": 0.6245986223220825
+  },
+  "limitations": [
+    "FD001 represents simulated turbofan degradation.",
+    "This telemetry result is a baseline for the industrial demo."
+  ]
+}

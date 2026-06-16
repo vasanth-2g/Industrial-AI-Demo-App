@@ -1,0 +1,66 @@
+{
+  "scenario_id": "DEMO-MULTIMODAL-001",
+  "asset_id": "ROBOT-JOINT-DEMO-01",
+  "timestamp": "2026-06-16T12:37:36.689466+00:00",
+  "synthetic_demo": true,
+  "status": "warning",
+  "root_cause": "A visual surface anomaly is present without corroborating critical telemetry.",
+  "fault_location": "localized_patch_region",
+  "confidence": 0.3125045211827455,
+  "evidence": [
+    {
+      "source": "telemetry",
+      "observation": "Predicted RUL is 125.0 cycles with failure risk 0.000."
+    },
+    {
+      "source": "vision",
+      "observation": "DINOv2 detected a visual anomaly and produced patch-level localization."
+    },
+    {
+      "source": "retrieval",
+      "observation": "5 maintenance passages were retrieved."
+    }
+  ],
+  "alternative_hypotheses": [
+    "Benign surface variation",
+    "Localized wear or damage",
+    "Vision-domain false positive"
+  ],
+  "recommended_actions": [
+    {
+      "priority": 1,
+      "action": "Inspect the localized visual anomaly region and compare it with a clean reference image before assigning a defect class.",
+      "citations": [
+        "SOP-SAFE-001",
+        "GUIDE-CRK-003"
+      ]
+    }
+  ],
+  "citations": [
+    "SOP-SAFE-001",
+    "SOP-GBX-004",
+    "ERR-E204",
+    "CHECK-ALIGN-009",
+    "GUIDE-CRK-003"
+  ],
+  "limitations": [
+    "FD001 represents simulated turbofan degradation.",
+    "This telemetry result is a baseline for the industrial demo.",
+    "Synthetic defects are programmatic overlays.",
+    "Only two independent normal source images were available.",
+    "Both normal sources were used in the memory bank.",
+    "There is no independent normal test set.",
+    "Metrics are experimental and do not establish deployment accuracy.",
+    "DINOv2 detects and localizes anomalies but does not classify defect type.",
+    "The maintenance documents are synthetic demonstration content.",
+    "Retrieved passages are advisory and not manufacturer procedures.",
+    "The reasoning layer must cite only document IDs in these results.",
+    "Telemetry and vision originate from separate demonstration datasets; their fusion validates system integration, not physical correlation.",
+    "The visual anomaly score is not a calibrated probability and does not identify a specific crack, corrosion, leak, or wear class."
+  ],
+  "safety": {
+    "advisory_only": true,
+    "autonomous_control": false,
+    "qualified_person_required": true
+  }
+}

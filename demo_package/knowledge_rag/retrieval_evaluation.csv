@@ -1,0 +1,7 @@
+case,query,expected,top_1,recall_at_1,recall_at_3,recall_at_5,reciprocal_rank,latency_ms
+1,E204 excessive vibration robot joint,['ERR-E204'],ERR-E204,1,1,1,1.0,6.721652112901211
+2,low RUL vibration heat inspect gearbox bearing,"['GUIDE-BRG-002', 'SOP-GBX-004']",SOP-GBX-004,1,1,1,1.0,5.586971528828144
+3,dark oil residue below gearbox seal,['GUIDE-LUB-005'],GUIDE-LUB-005,1,1,1,1.0,5.475328303873539
+4,linear surface anomaly possible crack NDT,['GUIDE-CRK-003'],GUIDE-CRK-003,1,1,1,1.0,5.35245705395937
+5,motor hot elevated current restricted cooling,"['ERR-E310', 'GUIDE-HEAT-007']",GUIDE-HEAT-007,1,1,1,1.0,5.336889997124672
+6,critical visual anomaly safe stop inspect robot joint,['SOP-SAFE-001'],SOP-SAFE-001,1,1,1,1.0,5.328570492565632

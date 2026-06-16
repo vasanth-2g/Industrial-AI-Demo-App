@@ -13,3 +13,36 @@ data/_cmapss_extract/
 
 
 
+
+# archives
+*.zip
+
+# generated images
+*.png
+*.jpg
+*.jpeg
+*.JPG
+
+# notebooks temp
+.ipynb_checkpoints/
+
+# python cache
+__pycache__/
+*.pyc
+
+# artifacts/models
+**/artifacts/
+*.npy
+
+# generated synthetic data
+data/synthetic_mechanical/
+
+# telemetry datasets
+telemetrics/data/
+
+# checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# generated figures
+**/figures/*.png

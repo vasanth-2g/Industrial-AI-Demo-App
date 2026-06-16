@@ -10,7 +10,7 @@
     "recall_at_3": 1.0,
     "recall_at_5": 1.0,
     "mean_reciprocal_rank": 1.0,
-    "mean_latency_ms": 5.445783336957295
+    "mean_latency_ms": 5.633644914875428
   },
   "source_status": "synthetic"
 }

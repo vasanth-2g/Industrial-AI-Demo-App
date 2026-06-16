@@ -1,0 +1,116 @@
+{
+  "scenario_id": "DEMO-MULTIMODAL-001",
+  "asset_id": "ROBOT-JOINT-DEMO-01",
+  "timestamp": "2026-06-16T12:37:36.689466+00:00",
+  "synthetic_demo": true,
+  "telemetry": {
+    "source_scenario_id": "CMAPSS-FD001-001",
+    "source_asset_id": "ENGINE-001",
+    "failure_risk": 9.042365491040982e-06,
+    "predicted_rul": 125.0,
+    "severity": "normal",
+    "alert": false,
+    "evidence": {
+      "last_observed_cycle": 31,
+      "failure_horizon_cycles": 30,
+      "alert_threshold": 0.6245986223220825
+    }
+  },
+  "vision": {
+    "source_scenario_id": "SYNTH-MECH-001",
+    "source_asset_id": "Generated image 2",
+    "anomaly_detected": true,
+    "anomaly_score_raw": 0.4687260389328003,
+    "score_type": "uncalibrated_dinov2_patch_distance",
+    "predicted_fault": "visual_anomaly",
+    "location": "dinov2_patch_heatmap",
+    "image_path": "anomaly/corrosion/Generated image 2_corrosion_008.png"
+  },
+  "retrieval": {
+    "query_id": "RAG-SYNTH-MECH-001",
+    "query": "robot joint critical degradation; predicted RUL 12.0 cycles; failure risk 0.91; visual surface anomaly localized by heatmap; event codes E204; safe response inspection gearbox bearing vibration",
+    "results": [
+      {
+        "document_id": "ERR-E204",
+        "title": "E204 Excessive Vibration Event",
+        "section": "Code definition",
+        "revision": "1.0",
+        "source_status": "synthetic",
+        "semantic_score": 0.5609179139137268,
+        "keyword_score": 1.0,
+        "score": 0.6706884354352951,
+        "text": "E204 denotes vibration above the configured operating envelope. Possible causes include bearing degradation, gearbox damage, misalignment, loose mounting, or abnormal load. Inspect evidence from other modalities before assigning a root cause."
+      },
+      {
+        "document_id": "SOP-GBX-004",
+        "title": "Gearbox Degradation Inspection",
+        "section": "Inspection",
+        "revision": "1.1",
+        "source_status": "synthetic",
+        "semantic_score": 0.670494019985199,
+        "keyword_score": 0.2222222222222222,
+        "score": 0.5584260705444548,
+        "text": "Low remaining useful life together with rising vibration or temperature can indicate gearbox or bearing degradation. Inspect lubrication level, gear backlash, bearing play, fastener torque, and abnormal noise. Confirm the cause before replacing parts."
+      },
+      {
+        "document_id": "SOP-SAFE-001",
+        "title": "Abnormal Robot Joint Safe Response",
+        "section": "Immediate response",
+        "revision": "1.0",
+        "source_status": "synthetic",
+        "semantic_score": 0.5913259387016296,
+        "keyword_score": 0.3333333333333333,
+        "score": 0.5268277873595556,
+        "text": "When telemetry indicates critical degradation or an inspection shows a structural surface anomaly, place the robot in a safe state, isolate motion energy, and prevent automatic restart. A qualified technician must inspect the affected joint before return to service. Do not infer component replacement from an anomaly score alone."
+      },
+      {
+        "document_id": "CHECK-ALIGN-009",
+        "title": "Joint Alignment Inspection Checklist",
+        "section": "Alignment",
+        "revision": "1.0",
+        "source_status": "synthetic",
+        "semantic_score": 0.5480325222015381,
+        "keyword_score": 0.14814814814814814,
+        "score": 0.4480614286881906,
+        "text": "For suspected misalignment, verify mounting surfaces, coupling offset, shaft runout, fastener condition, and repeatability under low load. Misalignment can produce periodic vibration and wear."
+      },
+      {
+        "document_id": "GUIDE-CRK-003",
+        "title": "Structural Crack Inspection",
+        "section": "Surface discontinuity",
+        "revision": "1.0",
+        "source_status": "synthetic",
+        "semantic_score": 0.5072108507156372,
+        "keyword_score": 0.25925925925925924,
+        "score": 0.44522295285154273,
+        "text": "A suspected crack or linear surface discontinuity requires close visual inspection and an appropriate nondestructive examination. Remove the asset from high-load service until the indication is confirmed. Do not classify heatmap localization as crack proof."
+      }
+    ]
+  },
+  "evidence_quality": {
+    "modalities_present": {
+      "telemetry": true,
+      "vision": true,
+      "retrieval": true
+    },
+    "telemetry_strength": 9.042365491040982e-06,
+    "vision_strength": 0.65,
+    "retrieval_count": 5,
+    "independent_physical_pair": false
+  },
+  "limitations": [
+    "FD001 represents simulated turbofan degradation.",
+    "This telemetry result is a baseline for the industrial demo.",
+    "Synthetic defects are programmatic overlays.",
+    "Only two independent normal source images were available.",
+    "Both normal sources were used in the memory bank.",
+    "There is no independent normal test set.",
+    "Metrics are experimental and do not establish deployment accuracy.",
+    "DINOv2 detects and localizes anomalies but does not classify defect type.",
+    "The maintenance documents are synthetic demonstration content.",
+    "Retrieved passages are advisory and not manufacturer procedures.",
+    "The reasoning layer must cite only document IDs in these results.",
+    "Telemetry and vision originate from separate demonstration datasets; their fusion validates system integration, not physical correlation.",
+    "The visual anomaly score is not a calibrated probability and does not identify a specific crack, corrosion, leak, or wear class."
+  ]
+}
