@@ -1,0 +1,13 @@
+class_name,normal_images,anomaly_images,anomaly_masks,has_annotation_csv
+candle,1000,100,100,True
+capsules,602,100,100,True
+cashew,500,100,100,True
+chewinggum,503,100,100,True
+fryum,500,100,100,True
+macaroni1,1000,100,100,True
+macaroni2,1000,100,100,True
+pcb1,1004,100,100,True
+pcb2,1001,100,100,True
+pcb3,1006,100,100,True
+pcb4,1005,100,100,True
+pipe_fryum,500,100,100,True
