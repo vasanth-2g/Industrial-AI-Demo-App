@@ -12,7 +12,7 @@ data/*.zip
 
 
 
-data/synthetic_mechanical/generated/dataset_preview.png
+
 
 # Runtime noise
 .ipynb_checkpoints/
