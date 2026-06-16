@@ -1,0 +1,27 @@
+{
+  "dataset": "Synthetic Mechanical Defects",
+  "generator_version": "0.2.0",
+  "seed": 42,
+  "output_size": [
+    1024,
+    1024
+  ],
+  "source_normal_images": 2,
+  "minimum_normal_sources_for_modeling": 8,
+  "variants_per_defect_per_source": 20,
+  "defect_types": [
+    "crack",
+    "oil_leak",
+    "corrosion",
+    "wear",
+    "overheating"
+  ],
+  "normal_samples": 2,
+  "anomaly_samples": 200,
+  "invalid_samples": 0,
+  "limitations": [
+    "Defects are programmatic overlays on clean inspection images.",
+    "The dataset validates system behavior but does not replace real factory images.",
+    "ROI settings should be reviewed for every new source image."
+  ]
+}
