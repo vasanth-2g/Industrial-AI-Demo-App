@@ -1,3 +1,20 @@
-data/
+
 *.zip
 .ipynb_checkpoints/
+# Ignore heavy datasets and generated image data
+data/VisA/
+data/CMAPSSData/
+data/_cmapss_extract/
+data/*.zip
+
+data/synthetic_mechanical/source_normal/
+data/synthetic_mechanical/generated/anomaly/
+data/synthetic_mechanical/generated/masks/
+data/synthetic_mechanical/generated/normal/
+data/synthetic_mechanical/generated/component_masks/
+data/synthetic_mechanical/generated/dataset_preview.png
+
+# Runtime noise
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+*.zip
