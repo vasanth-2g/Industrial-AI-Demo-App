@@ -1,6 +1,6 @@
 
 *.zip
-.ipynb_checkpoints/
+
 # Ignore heavy datasets and generated image data
 data/VisA/
 data/CMAPSSData/
