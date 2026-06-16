@@ -7,7 +7,7 @@ data/CMAPSSData/
 data/_cmapss_extract/
 data/*.zip
 
-data/synthetic_mechanical/source_normal/
+
 data/synthetic_mechanical/generated/anomaly/
 data/synthetic_mechanical/generated/masks/
 data/synthetic_mechanical/generated/normal/
