@@ -11,8 +11,10 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from rag_runtime import add_uploaded_document, collection_summary, search_work_orders
+from llm_rca_runtime import generate_chat_answer
+from rag_runtime import add_uploaded_document, collection_summary, retrieve as retrieve_knowledge, search_work_orders
 from scenario_runtime import run_scenario
+from vision_runtime import rebuild_normal_patch_memory, vision_metadata
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -75,6 +77,43 @@ def build_demo_payload() -> dict:
             "rag_documents": str(APP_ROOT / "backend" / "knowledge_rag"),
         },
     }
+
+
+def load_saved_scenario(context: dict) -> dict:
+    run = context.get("run") if isinstance(context.get("run"), dict) else {}
+    input_json = run.get("input_json")
+    if not isinstance(input_json, str):
+        return {}
+    path = Path(input_json).resolve()
+    runtime_root = RUNTIME_ROOT.resolve()
+    if not path.is_file() or runtime_root not in path.parents:
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def chat_retrieval_payload(question: str, context: dict) -> dict:
+    scenario = load_saved_scenario(context)
+    telemetry = context.get("telemetry") if isinstance(context.get("telemetry"), dict) else {}
+    vision = context.get("vision") if isinstance(context.get("vision"), dict) else {}
+    payload = dict(scenario)
+
+    description_parts = [
+        str(scenario.get("description", "")),
+        str(question),
+        f"remaining cycles {telemetry.get('predicted_rul')}",
+        f"failure risk {telemetry.get('failure_risk')}",
+        f"vision fault {vision.get('predicted_fault')}",
+    ]
+    payload["description"] = " ".join(part for part in description_parts if part and part != "None")
+
+    processed = vision.get("processed_image_path")
+    original = vision.get("image_path")
+    for image_path in (processed, original):
+        if isinstance(image_path, str) and Path(image_path).is_file():
+            payload["image_path"] = image_path
+            break
+
+    return payload
 
 
 class DemoHandler(SimpleHTTPRequestHandler):
@@ -227,6 +266,20 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 self.send_json(collection_summary())
                 return
 
+            if path == "/api/vision/memory":
+                metadata = vision_metadata()
+                self.send_json(
+                    {
+                        "status": "ok",
+                        "memory_bank_patches": metadata.get("memory_bank_patches"),
+                        "normal_memory_sources": metadata.get("normal_memory_sources", []),
+                        "evaluation_mode": metadata.get("evaluation_mode"),
+                        "image_threshold": metadata.get("image_threshold"),
+                        "pixel_threshold": metadata.get("pixel_threshold"),
+                    }
+                )
+                return
+
             if path == "/api/work-orders/search":
                 query = unquote(parsed.query or "")
                 params = {}
@@ -296,7 +349,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     json.dumps(result, indent=2),
                     encoding="utf-8",
                 )
-                self.send_json(result)
+                self.send_json(result, 422 if result.get("error") == "image_rejected" else 200)
                 return
 
             if path == "/api/rag/documents":
@@ -327,6 +380,50 @@ class DemoHandler(SimpleHTTPRequestHandler):
                         "collection": collection_summary(),
                     }
                 )
+                return
+
+            if path == "/api/vision/memory":
+                form = self.read_multipart_form()
+                run_dir = make_run_dir()
+                reference_dir = run_dir / "vision_memory_references"
+                reference_dir.mkdir(parents=True, exist_ok=True)
+                image_paths = []
+                for key in form.keys():
+                    field = form[key]
+                    fields = field if isinstance(field, list) else [field]
+                    for item in fields:
+                        if item.filename:
+                            filename = safe_upload_name(item.filename)
+                            output_path = reference_dir / filename
+                            output_path.write_bytes(item.file.read())
+                            image_paths.append(output_path)
+
+                result = rebuild_normal_patch_memory(image_paths)
+                self.send_json(result)
+                return
+
+            if path == "/api/chat":
+                body = self.read_json_body()
+                question = str(body.get("question") or "").strip()
+                context = body.get("context") if isinstance(body.get("context"), dict) else {}
+                if not question:
+                    self.send_json({"error": "missing_question"}, 400)
+                    return
+
+                telemetry = context.get("telemetry") if isinstance(context.get("telemetry"), dict) else {}
+                vision = context.get("vision") if isinstance(context.get("vision"), dict) else {}
+                payload = chat_retrieval_payload(question, context)
+                rag = retrieve_knowledge(payload, telemetry, vision)
+                answer = generate_chat_answer(
+                    question,
+                    {
+                        "scenario": payload,
+                        "telemetry": telemetry,
+                        "vision": vision,
+                    },
+                    rag,
+                )
+                self.send_json(answer)
                 return
 
             if path == "/api/work-orders/search":

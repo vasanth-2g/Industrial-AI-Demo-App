@@ -36,6 +36,10 @@ RAG document upload page:
 http://127.0.0.1:8000/rag.html
 ```
 
+The same page also includes DINOv2 normal-reference memory upload. Use clean
+normal asset images there to rebuild the patch memory used by visual anomaly
+detection.
+
 The backend uses trained model/artifact files inside `app`:
 
 ```text
@@ -105,8 +109,10 @@ images and generated outputs are cleared on restart.
 GET /api/health
 GET /api/demo
 GET /api/rag/documents
+GET /api/vision/memory
 GET /api/work-orders/search?q=<query>
 POST /api/rag/documents
+POST /api/vision/memory
 POST /api/work-orders/search
 POST /api/infer
 GET /api/runtime/<generated-file>
@@ -132,9 +138,13 @@ Telemetry behavior:
 
 Vision behavior:
 
-- The backend processes the uploaded image and generates a heatmap for that
-  request.
+- The backend crops the uploaded image to the foreground asset/robot region
+  before DINOv2 scoring when possible.
+- The backend processes the cropped image and generates a marked defect image
+  for that request.
 - The generated heatmap is served through `/api/runtime/...`.
+- `/api/vision/memory` rebuilds `normal_patch_memory.pt` from uploaded clean
+  normal/reference images.
 
 RAG and LLM RCA behavior:
 

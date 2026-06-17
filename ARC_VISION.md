@@ -199,6 +199,74 @@ For production, object detection + SAM is the best direction because DINOv2
 should only inspect the robot/asset, not pipes, windows, walls, or background
 plant structure.
 
+## Runtime App Flow
+
+The backend inference path now attempts the same ROI flow as the notebook:
+OWL-ViT object detection first, SAM segmentation second, then DINOv2 scoring
+on the background-removed crop. If OWL-ViT/SAM are unavailable, it falls back
+to OpenCV foreground cropping.
+
+```text
+POST /api/infer
+-> save uploaded image
+-> OWL-ViT detects robot/mechanical asset
+-> SAM segments the asset mask
+-> remove background and save robot-only crop
+-> DINOv2 patch scoring on processed crop
+-> return processed_image_path, roi_mode, roi_box, anomaly score, overlay image
+```
+
+If OWL-ViT/SAM cannot detect a robot or mechanical asset, the scenario is
+rejected before telemetry, RAG, or RCA classification continues.
+
+```text
+non-mechanical image
+-> no robot/mechanical asset detected
+-> return HTTP 422
+-> error = image_rejected
+-> do not run telemetry/RAG/RCA
+```
+
+The crop metadata appears in:
+
+```text
+vision.evidence.roi_mode
+vision.evidence.roi_box
+vision.processed_image_path
+```
+
+Expected preferred ROI mode:
+
+```text
+owlvit_sam_roi_crop
+```
+
+Fallback mode:
+
+```text
+foreground_roi_crop
+```
+
+## Updating Normal Patch Memory
+
+The app can rebuild DINOv2 normal memory from uploaded clean/reference images.
+
+```text
+GET  /api/vision/memory
+POST /api/vision/memory
+```
+
+The RAG page has a **DINOv2 Normal Reference Memory** panel. Upload clean
+normal images of the same robot/machine there. The backend converts those
+images into DINOv2 patch embeddings and replaces:
+
+```text
+app/backend/vision_dinov2/normal_patch_memory.pt
+```
+
+This still does not train DINOv2. It only updates the normal/reference memory
+used for anomaly comparison.
+
 ## Backend Files
 
 Main vision code:

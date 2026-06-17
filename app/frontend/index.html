@@ -157,14 +157,55 @@
       max-height: 560px;
       object-fit: contain;
     }
-    .citation {
-      border-left: 3px solid var(--accent);
-      padding: 10px 12px;
-      background: rgba(125, 211, 252, 0.08);
-      border-radius: 10px;
-      margin-bottom: 10px;
+    .chat-box {
+      display: grid;
+      gap: 10px;
+      min-height: 260px;
+      max-height: 440px;
+      overflow: auto;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(7, 11, 22, 0.54);
     }
-    .citation strong { color: var(--accent); }
+    .chat-message {
+      max-width: 92%;
+      padding: 11px 13px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      line-height: 1.45;
+      color: var(--text);
+      background: rgba(18, 26, 47, 0.96);
+    }
+    .chat-message.user {
+      justify-self: end;
+      border-color: #2563eb;
+      background: rgba(29, 78, 216, 0.26);
+    }
+    .chat-message.assistant {
+      justify-self: start;
+    }
+    .chat-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .chat-row input {
+      min-width: 0;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #070b16;
+      color: var(--text);
+      padding: 10px 14px;
+      font: inherit;
+    }
+    .chat-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
     pre {
       white-space: pre-wrap;
       word-break: break-word;
@@ -257,9 +298,6 @@
       color: var(--muted);
       font-size: 13px;
     }
-    #scenarioOutput {
-      max-height: 260px;
-    }
     @media (max-width: 1050px) {
       .span-3, .span-4, .span-5, .span-6, .span-7 { grid-column: span 12; }
       .top-band, .upload-grid { grid-template-columns: 1fr; }
@@ -316,7 +354,6 @@
         <div class="run-row">
           <button id="runScenario">Run Scenario</button>
         </div>
-        <pre id="scenarioOutput" style="margin-top:12px; display:none;"></pre>
       </section>
 
       <section class="card span-3 metric-card result-card">
@@ -361,24 +398,21 @@
         <ul class="list" id="evidenceList"></ul>
       </section>
 
-      <section class="card span-5 result-card">
-        <h2 class="section-title">Retrieved Knowledge</h2>
-        <div id="citations"></div>
-      </section>
-
-      <section class="card span-6 result-card">
-        <h2 class="section-title">Safety and Limitations</h2>
-        <ul class="list" id="limitationsList"></ul>
-      </section>
-
       <section class="card span-12 result-card">
-        <h2 class="section-title">Raw RCA JSON</h2>
-        <pre id="rawJson"></pre>
+        <h2 class="section-title">Scenario Chat</h2>
+        <div class="chat-box" id="chatMessages"></div>
+        <div class="chat-row">
+          <input id="chatQuestion" type="text" placeholder="Ask about cause, remaining cycles, part damage, or next inspection." />
+          <button id="askChat">Ask</button>
+        </div>
+        <div class="chat-meta" id="chatMeta"></div>
       </section>
     </div>
   </main>
 
   <script>
+    let latestResult = null;
+
     const fmtPct = (value) => `${(Number(value) * 100).toFixed(2)}%`;
     const fmtNum = (value, digits = 3) => Number(value).toFixed(digits);
     const titleCase = (value) => String(value || "unknown")
@@ -405,12 +439,36 @@
         const state = vision.is_anomaly ? "found" : "did not find";
         return `Image analysis ${state} a ${titleCase(vision.predicted_fault).toLowerCase()} indication with confidence score ${fmtPct(vision.anomaly_score)}.`;
       }
-      if (item.source === "rag") {
-        const count = rag && rag.results ? rag.results.length : 0;
-        const top = rag && rag.results ? rag.results.slice(0, 3).map((doc) => doc.document_id).join(", ") : "";
-        return `Retrieved ${count} matching maintenance references${top ? `, including ${top}` : ""}.`;
-      }
       return item.observation;
+    }
+
+    function addChatMessage(role, text, meta = "") {
+      const messages = document.getElementById("chatMessages");
+      const bubble = document.createElement("div");
+      bubble.className = `chat-message ${role}`;
+      bubble.textContent = text;
+      if (meta) {
+        const metaEl = document.createElement("div");
+        metaEl.className = "chat-meta";
+        metaEl.textContent = meta;
+        bubble.appendChild(metaEl);
+      }
+      messages.appendChild(bubble);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function resetChat(data) {
+      const messages = document.getElementById("chatMessages");
+      messages.innerHTML = "";
+      const telemetry = data.telemetry || {};
+      const vision = data.vision || {};
+      const fault = titleCase(vision.predicted_fault).toLowerCase();
+      addChatMessage(
+        "assistant",
+        `Scenario loaded. I can answer using the current telemetry result, image analysis, and indexed SOP or work-order knowledge. The model estimates about ${fmtNum(telemetry.predicted_rul, 1)} cycles remaining, and the image result indicates ${fault}.`
+      );
+      document.getElementById("chatMeta").textContent =
+        "Answers are limited to retrieved app knowledge and the current DINO/telemetry scenario context.";
     }
 
     function pill(status) {
@@ -423,6 +481,7 @@
     }
 
     function renderResult(data) {
+      latestResult = data;
       document.querySelectorAll(".result-card").forEach((card) => {
         card.style.display = "";
       });
@@ -436,16 +495,15 @@
       document.getElementById("risk").textContent = fmtPct(telemetry.failure_risk);
       document.getElementById("confidence").textContent = fmtPct(rca.confidence);
       document.getElementById("telemetrySeverity").textContent =
-        `Telemetry severity: ${telemetry.severity}; mode=${telemetry.evidence.model_mode}`;
+        `Telemetry severity: ${telemetry.severity}`;
 
       document.getElementById("telemetryList").innerHTML = listItems([
         `Scenario: ${telemetry.scenario_id}`,
         `Asset: ${telemetry.asset_id}`,
-        `Model mode: ${telemetry.evidence.model_mode}`,
-        `History rows used: ${telemetry.evidence.history_length}`,
-        `Latest cycle: ${telemetry.evidence.last_observed_cycle}`,
-        `Alert threshold: ${fmtPct(telemetry.evidence.alert_threshold)}`,
-        telemetry.evidence.model_error ? `Model note: ${telemetry.evidence.model_error}` : "Telemetry model ran successfully"
+        `Remaining operating life: about ${fmtNum(telemetry.predicted_rul, 1)} cycles`,
+        `Failure risk: ${fmtPct(telemetry.failure_risk)}`,
+        `Telemetry severity: ${telemetry.severity}`,
+        `Latest observed cycle: ${telemetry.evidence.last_observed_cycle}`
       ]);
 
       const heatmap = document.getElementById("heatmapImage");
@@ -460,39 +518,58 @@
         `[${(rca.classification || rca.status || "unknown").toUpperCase()} | confidence ${fmtPct(rca.confidence_score ?? rca.confidence)}] ` +
         humanRootCause(rca.root_cause, telemetry, vision);
       document.getElementById("evidenceList").innerHTML = listItems(
-        rca.evidence,
+        (rca.evidence || []).filter((item) => item.source !== "rag"),
         (item) => humanEvidence(item, telemetry, vision, rag)
       );
-      document.getElementById("citations").innerHTML = rag && rag.results && rag.results.length
-        ? `
-          <div class="small" style="margin-bottom:10px;">
-            RAG mode: ${rag.mode}; retrieved ${rag.results.length} passages; latency=${fmtNum(rag.latency_ms, 1)} ms
-          </div>
-          ${rag.results.map((doc) => `
-            <div class="citation">
-              <strong>${doc.document_id}</strong> ${doc.title}
-              <div class="small">Section: ${doc.section}; revision ${doc.revision}; score ${fmtNum(doc.score, 3)}; source=${doc.source_status}</div>
-              <div>${doc.text}</div>
-            </div>
-          `).join("")}
-        `
-        : `<div class="small">No RAG passages retrieved.</div>`;
-      document.getElementById("limitationsList").innerHTML = listItems([
-        ...telemetry.limitations,
-        ...vision.limitations,
-        ...rca.limitations,
-      ]);
-      document.getElementById("rawJson").textContent = JSON.stringify(data, null, 2);
+      resetChat(data);
+    }
+
+    async function askScenarioChat() {
+      const input = document.getElementById("chatQuestion");
+      const question = input.value.trim();
+      if (!question) return;
+      if (!latestResult) {
+        addChatMessage("assistant", "Run a scenario first, then ask a question about that result.");
+        return;
+      }
+
+      addChatMessage("user", question);
+      input.value = "";
+      document.getElementById("chatMeta").textContent = "Searching vector, keyword, and visual memory...";
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, context: latestResult }),
+        });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(body.message || body.error || "Chat request failed.");
+        }
+        const citations = body.citations && body.citations.length
+          ? `Sources: ${body.citations.join(", ")}`
+          : "";
+        const confidence = typeof body.confidence === "number"
+          ? `Confidence ${fmtPct(body.confidence)}`
+          : "";
+        addChatMessage("assistant", body.answer || "Out of knowledge.", [confidence, citations].filter(Boolean).join(" | "));
+        document.getElementById("chatMeta").textContent =
+          body.mode === "out_of_knowledge"
+            ? "No strong match was found in the indexed maintenance knowledge."
+            : "Answer grounded in the current scenario and matched maintenance knowledge.";
+      } catch (error) {
+        addChatMessage("assistant", `Chat failed: ${String(error)}`);
+        document.getElementById("chatMeta").textContent = "";
+      }
     }
 
     async function runScenario() {
       const status = document.getElementById("inferStatus");
-      const output = document.getElementById("scenarioOutput");
       const scenarioFile = document.getElementById("scenarioFileInput").files[0];
       const image = document.getElementById("imageInput").files[0];
 
       status.textContent = "Running scenario inference...";
-      output.textContent = "";
 
       try {
         if (!scenarioFile || !image) {
@@ -505,21 +582,24 @@
         const res = await fetch("/api/infer", request);
         const body = await res.json();
         if (!res.ok) {
-          throw new Error(JSON.stringify(body, null, 2));
+          throw new Error(body.message || body.error || "Scenario inference failed.");
         }
-        output.style.display = "block";
-        output.textContent = JSON.stringify(body, null, 2);
         renderResult(body);
         status.textContent = "Scenario completed.";
       } catch (error) {
-        status.textContent = "Scenario failed.";
-        output.style.display = "block";
-        output.textContent = String(error);
+        status.textContent = `Scenario failed: ${String(error.message || error)}`;
       }
     }
 
     async function main() {
       document.getElementById("runScenario").addEventListener("click", runScenario);
+      document.getElementById("askChat").addEventListener("click", askScenarioChat);
+      document.getElementById("chatQuestion").addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          askScenarioChat();
+        }
+      });
       document.querySelectorAll(".result-card").forEach((card) => {
         card.style.display = "none";
       });

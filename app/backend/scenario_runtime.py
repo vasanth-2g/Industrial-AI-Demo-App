@@ -356,8 +356,22 @@ def fuse_results(telemetry: dict[str, Any], vision: dict[str, Any], payload: dic
 
 
 def run_scenario(payload: dict[str, Any], demo_package: Path, run_dir: Path | None = None) -> dict[str, Any]:
-    telemetry = predict_telemetry(payload, demo_package)
     vision = predict_vision_result(payload, demo_package, run_dir)
+    if vision.get("evidence", {}).get("model_mode") == "rejected_non_mechanical_image":
+        return {
+            "error": "image_rejected",
+            "message": vision.get("evidence", {}).get(
+                "model_error",
+                "No robot or mechanical asset was detected in the uploaded image.",
+            ),
+            "vision": vision,
+            "telemetry": None,
+            "rag": None,
+            "llm_rca": None,
+            "fusion": None,
+        }
+
+    telemetry = predict_telemetry(payload, demo_package)
     rag = retrieve_knowledge(payload, telemetry, vision)
     fusion = generate_llm_rca(payload, telemetry, vision, rag)
     return {

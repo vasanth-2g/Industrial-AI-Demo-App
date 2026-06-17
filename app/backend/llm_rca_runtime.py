@@ -331,3 +331,234 @@ def generate_llm_rca(
             "error": f"{type(exc).__name__}: {exc}",
         }
         return fallback
+
+
+def fallback_chat_answer(question: str, context: dict[str, Any], rag: dict[str, Any]) -> dict[str, Any]:
+    results = rag.get("results") if isinstance(rag.get("results"), list) else []
+    top_score = float(results[0].get("score", 0.0)) if results else 0.0
+    telemetry = context.get("telemetry") or {}
+    vision = context.get("vision") or {}
+    question_lower = question.lower()
+    fault = str(vision.get("predicted_fault") or "visual anomaly").replace("_", " ").lower()
+
+    def result_text(item: dict[str, Any]) -> str:
+        return " ".join(
+            [
+                str(item.get("document_id", "")),
+                str(item.get("title", "")),
+                str(item.get("section", "")),
+                " ".join(str(tag) for tag in item.get("tags", [])),
+                str(item.get("text", "")),
+            ]
+        ).lower()
+
+    relevant_results = [
+        item
+        for item in results
+        if fault != "visual anomaly" and all(word in result_text(item) for word in fault.split())
+    ]
+    if not relevant_results:
+        relevant_results = [
+            item
+            for item in results
+            if any(token in result_text(item) for token in ("sop", "guide", "inspection", "maintenance", "leak", "lubrication", "seal", "corrosion", "crack"))
+        ]
+    if not relevant_results:
+        relevant_results = results[:3]
+    citations = [item.get("document_id") for item in relevant_results[:3] if item.get("document_id")]
+
+    if top_score < 0.08:
+        return {
+            "answer": "Out of knowledge. I could not find enough matching telemetry, vision, or maintenance knowledge to answer that safely.",
+            "confidence": 0.0,
+            "citations": [],
+            "retrieval_score": top_score,
+            "mode": "out_of_knowledge",
+        }
+
+    rul = telemetry.get("predicted_rul")
+    risk = telemetry.get("failure_risk")
+    severity = telemetry.get("severity")
+    score = vision.get("anomaly_score")
+
+    cycle_match = re.search(r"(\d+(?:\.\d+)?)\s*(?:cycles?|usage|uses?)\s*(?:per|/)\s*day", question_lower)
+    if rul is not None and cycle_match:
+        cycles_per_day = float(cycle_match.group(1))
+        if cycles_per_day > 0:
+            days = float(rul) / cycles_per_day
+            return {
+                "answer": (
+                    f"About {float(rul):.1f} operating cycles remaining means roughly {days:.1f} days "
+                    f"at {cycles_per_day:g} cycles per day. Because the image indicates {fault}, plan inspection before that limit instead of waiting for the full calculated life."
+                ),
+                "confidence": round(min(0.92, 0.55 + top_score / 2), 4),
+                "citations": citations,
+                "retrieval_score": top_score,
+                "mode": "deterministic_cycle_math",
+            }
+
+    asks_next_step = any(phrase in question_lower for phrase in ("what to do", "next", "action", "recommend", "maintenance", "repair", "inspect"))
+    if asks_next_step:
+        guidance = str((relevant_results[0] if relevant_results else results[0]).get("text") or "").strip()
+        actions = []
+        if "oil leak" in fault or "leak" in fault:
+            actions = [
+                "Inspect the seal, fittings, drain points, and lubricant level.",
+                "Clean the wet area and re-check after a short controlled run to confirm leak growth.",
+                "Check for contamination and monitor bearing or gear wear because lubrication loss can accelerate damage.",
+                "Keep telemetry under watch even though current failure risk is low.",
+            ]
+        elif "corrosion" in fault:
+            actions = [
+                "Clean the affected surface and inspect for coating loss, pitting, and material loss.",
+                "Check moisture or chemical exposure sources.",
+                "Apply anti-corrosion treatment and schedule a follow-up inspection.",
+            ]
+        elif "crack" in fault:
+            actions = [
+                "Remove the asset from high-load service until the indication is confirmed.",
+                "Perform close visual inspection and nondestructive testing.",
+                "Do not treat localization alone as proof of a crack.",
+            ]
+        else:
+            actions = [
+                "Inspect the highlighted area manually before assigning a final fault class.",
+                "Compare with a clean reference image and continue telemetry monitoring.",
+            ]
+        return {
+            "answer": (
+                f"Next step: {actions[0]} "
+                f"Then {actions[1].lower()} "
+                f"Also {actions[2].lower() if len(actions) > 2 else 'document the finding and re-run inspection after correction.'} "
+                f"Current telemetry is {severity} with about {float(rul):.1f} cycles remaining and {float(risk) * 100:.2f}% failure risk."
+            ),
+            "confidence": round(min(0.95, 0.45 + top_score), 4),
+            "citations": citations,
+            "retrieval_score": top_score,
+            "mode": "deterministic_next_steps",
+        }
+
+    asks_rul = any(word in question_lower for word in ("cycle", "rul", "remaining", "life", "day", "days"))
+    if asks_rul and rul is not None:
+        return {
+            "answer": (
+                f"The telemetry result means about {float(rul):.1f} operating cycles remain before the learned failure threshold. "
+                "A cycle is a unit of operation from the telemetry dataset, not automatically one clock day. "
+                "To convert it to days, divide by your actual cycles per day."
+            ),
+            "confidence": round(min(0.9, 0.5 + top_score / 2), 4),
+            "citations": citations,
+            "retrieval_score": top_score,
+            "mode": "deterministic_rul_explanation",
+        }
+
+    if not any(token in question_lower for token in fault.split() + ["telemetry", "vision", "failure", "risk", "cycle", "rul", "inspection", "maintenance", "part", "damage", "cause", "why"]):
+        return {
+            "answer": "Out of knowledge. I could not find enough matching telemetry, vision, or maintenance knowledge to answer that safely.",
+            "confidence": 0.0,
+            "citations": [],
+            "retrieval_score": top_score,
+            "mode": "out_of_knowledge",
+        }
+
+    parts = []
+    if rul is not None:
+        parts.append(f"The telemetry model estimates about {float(rul):.1f} operating cycles remaining.")
+    if risk is not None:
+        parts.append(f"The failure risk is {float(risk) * 100:.2f}% and telemetry status is {severity}.")
+    if score is not None:
+        parts.append(f"The image analysis found {fault} evidence with a visual score of {float(score) * 100:.1f}%.")
+    if relevant_results:
+        guidance = str(relevant_results[0].get("text") or "").strip()
+        if guidance:
+            parts.append(f"Matched guidance: {guidance[:280]}")
+
+    return {
+        "answer": " ".join(parts) if parts else "The retrieved knowledge supports the current RCA, but no concise explanation could be formed.",
+        "confidence": round(min(0.95, 0.35 + top_score), 4),
+        "citations": citations,
+        "retrieval_score": top_score,
+        "mode": "deterministic_rag_chat",
+    }
+
+
+def chat_prompt(question: str, context: dict[str, Any], rag: dict[str, Any]) -> list[dict[str, str]]:
+    compact_rag = [
+        {
+            "document_id": item.get("document_id"),
+            "title": item.get("title"),
+            "text": item.get("text"),
+            "score": item.get("score"),
+        }
+        for item in (rag.get("results") or [])[:5]
+    ]
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You are an industrial maintenance assistant. Answer in clear human language. "
+                "Use only the supplied telemetry, DINO/vision, and retrieved knowledge. "
+                "If the answer is not supported by retrieved knowledge, say exactly: Out of knowledge."
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "question": question,
+                    "telemetry": context.get("telemetry"),
+                    "vision": context.get("vision"),
+                    "retrieved_knowledge": compact_rag,
+                    "required_json_schema": {
+                        "answer": "human readable answer or Out of knowledge",
+                        "confidence": "number 0..1",
+                        "citations": "array of document_id strings from retrieved_knowledge only",
+                    },
+                },
+                indent=2,
+            ),
+        },
+    ]
+
+
+def generate_chat_answer(question: str, context: dict[str, Any], rag: dict[str, Any]) -> dict[str, Any]:
+    fallback = fallback_chat_answer(question, context, rag)
+    if fallback["mode"] in {
+        "out_of_knowledge",
+        "deterministic_cycle_math",
+        "deterministic_next_steps",
+        "deterministic_rul_explanation",
+    }:
+        return {**fallback, "rag": rag}
+
+    try:
+        llm_result = call_huggingface(chat_prompt(question, context, rag))
+        answer = str(llm_result.get("answer") or "").strip()
+        if not answer or answer.lower() == "out of knowledge":
+            return {
+                "answer": "Out of knowledge.",
+                "confidence": 0.0,
+                "citations": [],
+                "retrieval_score": fallback["retrieval_score"],
+                "mode": "out_of_knowledge",
+                "rag": rag,
+            }
+        citations = [
+            citation
+            for citation in llm_result.get("citations", [])
+            if citation in {item.get("document_id") for item in (rag.get("results") or [])}
+        ]
+        return {
+            "answer": answer,
+            "confidence": float(llm_result.get("confidence", fallback["confidence"])),
+            "citations": citations or fallback["citations"],
+            "retrieval_score": fallback["retrieval_score"],
+            "mode": "huggingface_rag_chat",
+            "rag": rag,
+        }
+    except Exception as exc:
+        return {
+            **fallback,
+            "llm_error": f"{type(exc).__name__}: {exc}",
+            "rag": rag,
+        }

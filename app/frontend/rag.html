@@ -360,6 +360,39 @@
       </section>
 
       <section class="card span-12">
+        <div class="top-band">
+          <div>
+            <div class="eyebrow">Vision Memory</div>
+            <h2 class="section-title">DINOv2 Normal Reference Memory</h2>
+            <p class="small">
+              Upload clean normal/reference images for the asset. The backend converts them into
+              DINOv2 patch embeddings and replaces the normal memory used for anomaly detection.
+            </p>
+          </div>
+          <span class="small status-text" id="visionMemoryStatus">Ready</span>
+        </div>
+        <div class="upload-grid">
+          <div class="upload-field">
+            <div class="label">Normal Reference Images</div>
+            <label class="file-upload">
+              Choose Images
+              <input id="visionMemoryInput" type="file" multiple accept="image/*,.png,.jpg,.jpeg,.bmp,.webp,.tif,.tiff" />
+            </label>
+            <span class="small file-name" id="visionMemoryFileName">No reference images selected</span>
+            <div class="small">Use clean/normal images of the same robot, machine, or mechanical asset.</div>
+          </div>
+          <div class="upload-field">
+            <div class="label">Current Memory</div>
+            <pre id="visionMemoryState">Refresh to load memory state.</pre>
+          </div>
+        </div>
+        <div class="run-row">
+          <button class="secondary" id="refreshVisionMemory">Refresh Memory</button>
+          <button id="updateVisionMemory">Update DINOv2 Memory</button>
+        </div>
+      </section>
+
+      <section class="card span-12">
         <h2 class="section-title">Raw Index State</h2>
         <details>
           <summary>Show collection JSON</summary>
@@ -470,6 +503,48 @@
       }
     }
 
+    async function refreshVisionMemory() {
+      const status = document.getElementById("visionMemoryStatus");
+      status.textContent = "Loading memory...";
+      try {
+        const res = await fetch("/api/vision/memory");
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(JSON.stringify(body, null, 2));
+        }
+        document.getElementById("visionMemoryState").textContent = JSON.stringify(body, null, 2);
+        status.textContent = "Ready";
+      } catch (error) {
+        status.textContent = "Memory load failed";
+        document.getElementById("visionMemoryState").textContent = String(error);
+      }
+    }
+
+    async function updateVisionMemory() {
+      const status = document.getElementById("visionMemoryStatus");
+      const files = Array.from(document.getElementById("visionMemoryInput").files);
+      if (!files.length) {
+        status.textContent = "Choose normal reference images first.";
+        return;
+      }
+
+      const form = new FormData();
+      files.forEach((file) => form.append("references", file));
+      status.textContent = "Updating DINOv2 memory...";
+      try {
+        const res = await fetch("/api/vision/memory", { method: "POST", body: form });
+        const body = await res.json();
+        if (!res.ok) {
+          throw new Error(JSON.stringify(body, null, 2));
+        }
+        document.getElementById("visionMemoryState").textContent = JSON.stringify(body, null, 2);
+        status.textContent = `Updated memory from ${body.source_count} images.`;
+      } catch (error) {
+        status.textContent = "Memory update failed";
+        document.getElementById("visionMemoryState").textContent = String(error);
+      }
+    }
+
     document.getElementById("ragMetadata").value = JSON.stringify(
       {
         document_type: "sop",
@@ -488,15 +563,25 @@
         : "No documents selected";
     });
 
+    document.getElementById("visionMemoryInput").addEventListener("change", (event) => {
+      const files = Array.from(event.target.files || []);
+      document.getElementById("visionMemoryFileName").textContent = files.length
+        ? files.map((file) => file.name).join(", ")
+        : "No reference images selected";
+    });
+
     document.getElementById("uploadRagDocuments").addEventListener("click", uploadRagDocuments);
     document.getElementById("refreshRagStatus").addEventListener("click", refreshRagStatus);
     document.getElementById("searchWorkOrders").addEventListener("click", searchWorkOrders);
+    document.getElementById("refreshVisionMemory").addEventListener("click", refreshVisionMemory);
+    document.getElementById("updateVisionMemory").addEventListener("click", updateVisionMemory);
     document.getElementById("workOrderQuery").addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
         searchWorkOrders();
       }
     });
     refreshRagStatus();
+    refreshVisionMemory();
   </script>
 </body>
 </html>

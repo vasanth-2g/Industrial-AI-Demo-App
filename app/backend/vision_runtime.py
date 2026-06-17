@@ -20,9 +20,23 @@ DINO_LOCAL_DIR = resolve_app_path(
     config_value("vision", "dinov2_local_dir"),
     VISION_MODEL_DIR / "facebook_dinov2_base",
 )
+OWLVIT_LOCAL_DIR = VISION_MODEL_DIR / "google_owlvit_base_patch32"
+SAM_LOCAL_DIR = VISION_MODEL_DIR / "facebook_sam_vit_base"
 SIMILARITY_CHUNK_SIZE = 5000
 TOP_PATCH_FRACTION = 0.05
 _DINO_CACHE: dict[str, Any] = {}
+_ROI_CACHE: dict[str, Any] = {}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff"}
+ASSET_DETECTION_LABELS = [
+    "industrial robot",
+    "robot arm",
+    "robotic arm",
+    "inspection robot",
+    "mechanical arm",
+    "machine part",
+    "industrial machine",
+    "mechanical component",
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -110,6 +124,14 @@ def heatmap_path_for(run_dir: Path | None) -> Path | None:
     return output_dir / "vision_dinov2_result.png"
 
 
+def roi_path_for(run_dir: Path | None) -> Path | None:
+    if run_dir is None:
+        return None
+    output_dir = run_dir / "outputs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir / "vision_robot_roi.png"
+
+
 def extract_patch_embeddings(image: Image.Image, runtime: dict[str, Any]) -> torch.Tensor:
     inputs = runtime["processor"](images=[image], return_tensors="pt")
     pixel_values = inputs["pixel_values"].to(runtime["device"])
@@ -117,6 +139,196 @@ def extract_patch_embeddings(image: Image.Image, runtime: dict[str, Any]) -> tor
         outputs = runtime["model"](pixel_values=pixel_values)
         patches = F.normalize(outputs.last_hidden_state[:, 1:, :].float(), dim=-1)
     return patches[0].cpu()
+
+
+def torch_device_info() -> tuple[str, int, str]:
+    if torch.cuda.is_available():
+        backend = "rocm" if getattr(torch.version, "hip", None) else "cuda"
+        return "cuda", 0, backend
+    return "cpu", -1, "cpu"
+
+
+def pad_box(box: list[float] | tuple[float, float, float, float], image_shape: tuple[int, ...], pad_ratio: float = 0.08) -> tuple[int, int, int, int]:
+    height, width = image_shape[:2]
+    x1, y1, x2, y2 = [int(round(value)) for value in box]
+    pad = int(max(x2 - x1, y2 - y1) * pad_ratio)
+    return (
+        max(0, x1 - pad),
+        max(0, y1 - pad),
+        min(width, x2 + pad),
+        min(height, y2 + pad),
+    )
+
+
+def crop_from_segmentation_mask(rgb: np.ndarray, mask: np.ndarray, fallback_box: tuple[int, int, int, int]) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    binary = (mask > 0).astype(np.uint8)
+    if int(binary.sum()) == 0:
+        x1, y1, x2, y2 = fallback_box
+        return rgb[y1:y2, x1:x2], fallback_box
+
+    ys, xs = np.where(binary > 0)
+    box = pad_box((float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)), rgb.shape, 0.04)
+    x1, y1, x2, y2 = box
+    robot_only = rgb.copy()
+    robot_only[binary == 0] = 255
+    return robot_only[y1:y2, x1:x2], box
+
+
+def load_roi_runtime() -> dict[str, Any]:
+    if _ROI_CACHE:
+        return _ROI_CACHE
+
+    try:
+        from transformers import SamModel, SamProcessor, pipeline  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"OWL-ViT/SAM runtime is unavailable: {type(exc).__name__}: {exc}") from exc
+
+    device, pipeline_device, backend = torch_device_info()
+    detector_source = str(OWLVIT_LOCAL_DIR) if OWLVIT_LOCAL_DIR.is_dir() else "google/owlvit-base-patch32"
+    sam_source = str(SAM_LOCAL_DIR) if SAM_LOCAL_DIR.is_dir() else "facebook/sam-vit-base"
+    detector = pipeline(
+        task="zero-shot-object-detection",
+        model=detector_source,
+        device=pipeline_device,
+    )
+    sam_processor = SamProcessor.from_pretrained(sam_source, use_fast=False)
+    sam_model = SamModel.from_pretrained(sam_source).to(device)
+    sam_model.eval()
+
+    _ROI_CACHE.update(
+        {
+            "detector": detector,
+            "sam_processor": sam_processor,
+            "sam_model": sam_model,
+            "device": device,
+            "backend": backend,
+            "detector_source": detector_source,
+            "sam_source": sam_source,
+        }
+    )
+    return _ROI_CACHE
+
+
+def crop_asset_region_with_owlvit_sam(image_path: Path, output_path: Path | None = None) -> dict[str, Any]:
+    runtime = load_roi_runtime()
+    image = Image.open(image_path).convert("RGB")
+    rgb = np.asarray(image)
+    detections = runtime["detector"](image, candidate_labels=ASSET_DETECTION_LABELS)
+    detections = sorted(detections, key=lambda item: float(item.get("score", 0.0)), reverse=True)
+    detections = [item for item in detections if float(item.get("score", 0.0)) >= 0.05]
+    if not detections:
+        raise RuntimeError("OWL-ViT did not detect a robot or mechanical asset.")
+
+    best = detections[0]
+    box_dict = best["box"]
+    det_box = pad_box(
+        [box_dict["xmin"], box_dict["ymin"], box_dict["xmax"], box_dict["ymax"]],
+        rgb.shape,
+        0.10,
+    )
+    processor = runtime["sam_processor"]
+    model = runtime["sam_model"]
+    inputs = processor(image, input_boxes=[[list(det_box)]], return_tensors="pt").to(runtime["device"])
+    with torch.inference_mode():
+        outputs = model(**inputs)
+    masks = processor.image_processor.post_process_masks(
+        outputs.pred_masks.cpu(),
+        inputs["original_sizes"].cpu(),
+        inputs["reshaped_input_sizes"].cpu(),
+    )[0]
+    scores = outputs.iou_scores.cpu()[0, 0]
+    best_mask_index = int(torch.argmax(scores).item())
+    mask = masks[0, best_mask_index].numpy().astype(np.uint8)
+    crop, crop_box = crop_from_segmentation_mask(rgb, mask, det_box)
+
+    if output_path is not None:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(crop).save(output_path)
+        crop_path = output_path
+    else:
+        crop_path = image_path
+
+    return {
+        "path": str(crop_path),
+        "mode": "owlvit_sam_roi_crop",
+        "box": [int(value) for value in crop_box],
+        "error": "",
+        "detected_label": best.get("label"),
+        "detector_score": float(best.get("score", 0.0)),
+        "gpu_backend": runtime["backend"],
+        "detector_source": runtime["detector_source"],
+        "sam_source": runtime["sam_source"],
+    }
+
+
+def crop_asset_region(image_path: Path, output_path: Path | None = None, require_semantic_asset: bool = False) -> dict[str, Any]:
+    try:
+        return crop_asset_region_with_owlvit_sam(image_path, output_path)
+    except Exception as exc:
+        roi_error = f"{type(exc).__name__}: {exc}"
+        if require_semantic_asset:
+            return {
+                "path": str(image_path),
+                "mode": "rejected_no_mechanical_asset",
+                "box": None,
+                "error": (
+                    "No robot or mechanical asset was detected by OWL-ViT/SAM. "
+                    f"Scenario was not processed. Details: {roi_error}"
+                ),
+            }
+
+    image = cv2.imread(str(image_path))
+    if image is None:
+        return {
+            "path": str(image_path),
+            "mode": "original_unreadable",
+            "box": None,
+            "error": f"{roi_error}; OpenCV could not read image.",
+        }
+
+    rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    mask = foreground_object_mask(rgb)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return {
+            "path": str(image_path),
+            "mode": "original_no_roi",
+            "box": None,
+            "error": f"{roi_error}; no foreground object contour found.",
+        }
+
+    height, width = rgb.shape[:2]
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < max(24, height * width * 0.01):
+        return {
+            "path": str(image_path),
+            "mode": "original_small_roi",
+            "box": None,
+            "error": f"{roi_error}; detected foreground object was too small.",
+        }
+
+    x, y, w, h = cv2.boundingRect(largest)
+    pad = int(max(w, h) * 0.08)
+    x1 = max(0, x - pad)
+    y1 = max(0, y - pad)
+    x2 = min(width, x + w + pad)
+    y2 = min(height, y + h + pad)
+    cleaned = rgb.copy()
+    cleaned[mask == 0] = 255
+    crop = cleaned[y1:y2, x1:x2]
+
+    if output_path is None:
+        output_path = image_path
+    else:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(crop).save(output_path)
+
+    return {
+        "path": str(output_path),
+        "mode": "foreground_roi_crop",
+        "box": [int(x1), int(y1), int(x2), int(y2)],
+        "error": f"OWL-ViT/SAM fallback: {roi_error}",
+    }
 
 
 def nearest_memory_distance(query_patches: torch.Tensor, runtime: dict[str, Any]) -> torch.Tensor:
@@ -217,7 +429,7 @@ def foreground_object_mask(rgb: np.ndarray) -> np.ndarray:
 
 
 def refine_predicted_mask(heat_norm: np.ndarray, predicted_mask: np.ndarray, rgb: np.ndarray) -> np.ndarray:
-    cutoff = max(0.72, float(np.percentile(heat_norm, 92)))
+    cutoff = max(0.55, float(np.percentile(heat_norm, 86)))
     mask = ((heat_norm >= cutoff).astype(np.uint8) * 255)
     if int(mask.sum()) == 0:
         cutoff = float(np.percentile(heat_norm, 97))
@@ -238,12 +450,15 @@ def refine_predicted_mask(heat_norm: np.ndarray, predicted_mask: np.ndarray, rgb
     if not contours:
         return mask
 
-    min_area = max(24, int(mask.shape[0] * mask.shape[1] * 0.001))
+    min_area = max(12, int(mask.shape[0] * mask.shape[1] * 0.0005))
     clean = np.zeros_like(mask)
     for contour in contours:
         if cv2.contourArea(contour) >= min_area:
             cv2.drawContours(clean, [contour], -1, 255, thickness=-1)
-    return clean if int(clean.sum()) else mask
+    if int(clean.sum()) == 0:
+        clean = mask
+    expand_kernel = np.ones((7, 7), np.uint8)
+    return cv2.dilate(clean, expand_kernel, iterations=1)
 
 
 def save_dinov2_result_figure(
@@ -262,11 +477,11 @@ def save_dinov2_result_figure(
 
     overlay = rgb.copy()
     overlay[mask > 0] = color
-    marked = cv2.addWeighted(rgb, 0.70, overlay, 0.30, 0)
+    marked = cv2.addWeighted(rgb, 0.55, overlay, 0.45, 0)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if contours:
-        cv2.drawContours(marked, contours, -1, color, thickness=3, lineType=cv2.LINE_AA)
+        cv2.drawContours(marked, contours, -1, color, thickness=5, lineType=cv2.LINE_AA)
     canvas = Image.fromarray(marked)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output_path)
@@ -309,6 +524,65 @@ def score_image(image_path: Path, output_path: Path | None, predicted_fault: str
     }
 
 
+def rebuild_normal_patch_memory(image_paths: list[Path], source_label: str = "uploaded_reference") -> dict[str, Any]:
+    valid_paths = [path for path in image_paths if path.suffix.lower() in IMAGE_SUFFIXES and path.is_file()]
+    if not valid_paths:
+        raise ValueError("No readable reference images were provided.")
+
+    runtime = load_dinov2_runtime()
+    patch_batches = []
+    source_names = []
+    for path in valid_paths:
+        image = Image.open(path).convert("RGB")
+        patches = extract_patch_embeddings(image, runtime)
+        patch_batches.append(patches)
+        source_names.append(path.name)
+
+    memory_bank = torch.cat(patch_batches, dim=0).float().contiguous()
+    memory_path = VISION_MODEL_DIR / str(config_value("vision", "normal_patch_memory_file", "normal_patch_memory.pt"))
+    state = {
+        "memory_bank": memory_bank,
+        "model_name": runtime["model_name"],
+        "image_size": runtime["image_size"],
+        "grid_height": runtime["grid_height"],
+        "grid_width": runtime["grid_width"],
+        "patch_size": max(1, runtime["image_size"] // max(1, runtime["grid_height"])),
+        "normal_memory_sources": source_names,
+        "evaluation_mode": f"{source_label}_normal_reference_memory",
+    }
+    memory_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(state, memory_path)
+
+    metadata_path = VISION_MODEL_DIR / str(config_value("vision", "metadata_file", "metadata.json"))
+    metadata = vision_metadata()
+    metadata.update(
+        {
+            "normal_memory_sources": source_names,
+            "memory_bank_patches": int(memory_bank.shape[0]),
+            "evaluation_mode": state["evaluation_mode"],
+            "limitations": [
+                "Normal patch memory was rebuilt from uploaded reference images.",
+                "DINOv2 remains frozen; only the reference memory bank changed.",
+                "Use clean/normal asset images for best anomaly localization.",
+            ],
+        }
+    )
+    metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+
+    _DINO_CACHE.clear()
+    return {
+        "status": "updated",
+        "memory_path": str(memory_path),
+        "metadata_path": str(metadata_path),
+        "source_count": len(source_names),
+        "sources": source_names,
+        "memory_bank_patches": int(memory_bank.shape[0]),
+        "model_name": runtime["model_name"],
+        "image_size": runtime["image_size"],
+        "patch_grid": [runtime["grid_height"], runtime["grid_width"]],
+    }
+
+
 def build_vision_result(
     payload: dict[str, Any],
     demo_package: Path,
@@ -321,6 +595,8 @@ def build_vision_result(
     model_mode = "dinov2_patch_memory"
     model_error = ""
     heatmap = heatmap_path_for(run_dir)
+    roi_path = roi_path_for(run_dir)
+    roi = {"path": str(image_file) if image_file else image_path, "mode": None, "box": None, "error": ""}
     metrics = {
         "anomaly_score": 0.0,
         "is_anomaly": False,
@@ -332,10 +608,24 @@ def build_vision_result(
         model_error = "No readable image file was provided."
     else:
         try:
-            metrics = score_image(image_file, heatmap, predicted_fault)
+            roi = crop_asset_region(image_file, roi_path, require_semantic_asset=True)
+            if roi.get("mode") == "rejected_no_mechanical_asset":
+                model_mode = "rejected_non_mechanical_image"
+                model_error = str(roi.get("error", "Image was rejected before DINOv2 scoring."))
+                metrics = {
+                    "anomaly_score": 0.0,
+                    "is_anomaly": False,
+                    "threshold": 0.35,
+                    "image_size": [],
+                }
+            else:
+                score_path = Path(roi["path"]) if roi.get("path") else image_file
+                metrics = score_image(score_path, heatmap, predicted_fault)
         except Exception as exc:
-            model_mode = "image_processing_failed"
-            model_error = f"{type(exc).__name__}: {exc}"
+            if model_mode != "rejected_non_mechanical_image":
+                model_mode = "image_processing_failed"
+                model_error = f"{type(exc).__name__}: {exc}"
+                roi = {"path": str(image_file), "mode": "failed", "box": None, "error": model_error}
 
     return {
         "scenario_id": payload.get("scenario_id", "SCENARIO-001"),
@@ -346,6 +636,7 @@ def build_vision_result(
         "severity": "warning" if metrics["is_anomaly"] else "normal",
         "location": "generated_image_heatmap",
         "image_path": str(image_file) if image_file else image_path,
+        "processed_image_path": roi.get("path") if image_file else None,
         "heatmap_path": str(heatmap) if heatmap else None,
         "evidence": {
             "model_mode": model_mode,
@@ -359,6 +650,14 @@ def build_vision_result(
             "normal_memory_sources": metrics.get("normal_memory_sources", []),
             "evaluation_mode": metrics.get("evaluation_mode"),
             "patch_grid": metrics.get("patch_grid", []),
+            "roi_mode": roi.get("mode") if image_file else None,
+            "roi_box": roi.get("box") if image_file else None,
+            "roi_error": roi.get("error") if image_file else None,
+            "roi_detector_label": roi.get("detected_label") if image_file else None,
+            "roi_detector_score": roi.get("detector_score") if image_file else None,
+            "roi_gpu_backend": roi.get("gpu_backend") if image_file else None,
+            "roi_detector_source": roi.get("detector_source") if image_file else None,
+            "roi_sam_source": roi.get("sam_source") if image_file else None,
         },
         "limitations": [
             "DINOv2 detects and localizes anomalies but does not classify defect type.",
