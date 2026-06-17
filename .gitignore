@@ -17,6 +17,12 @@ data/synthetic_mechanical/
 *.jpeg
 *.JPG
 app/runtime/
+!user_test/
+!user_test/robot_corrosion.jpg
+!user_test/oil_leak.png
+!user_test/crack_surface.png
+!user_test/corrosion_patch.png
+!user_test/normal_reference.png
 
 # notebooks temp
 .ipynb_checkpoints/
@@ -27,6 +33,7 @@ __pycache__/
 
 # artifacts/models
 **/artifacts/
+app/backend/vision_dinov2/facebook_dinov2_base/model.safetensors
 
 *.npy
 

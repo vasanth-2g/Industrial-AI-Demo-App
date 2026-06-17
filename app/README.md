@@ -53,6 +53,19 @@ app/model_download_and_swap.ipynb
 Use it when you want to download a Hugging Face LLM, replace DINOv2, replace
 XGBoost models, or rebuild RAG vectors.
 
+If `model.safetensors` is too large to upload to GitHub, clone the repo on the
+server and download DINOv2 weights there:
+
+```bash
+python app/download_dinov2_weights.py
+```
+
+This downloads `facebook/dinov2-base` into:
+
+```text
+app/backend/vision_dinov2/facebook_dinov2_base
+```
+
 Robot ROI crop notebook:
 
 ```text
