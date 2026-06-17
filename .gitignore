@@ -40,6 +40,9 @@ __pycache__/
 # artifacts/models
 **/artifacts/
 app/backend/vision_dinov2/facebook_dinov2_base/model.safetensors
+app/backend/vision_dinov2/google_owlvit_base_patch32/
+app/backend/vision_dinov2/facebook_sam_vit_base/
+app/backend/hf_models/
 
 *.npy
 
