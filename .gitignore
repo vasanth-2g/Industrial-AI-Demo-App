@@ -24,7 +24,16 @@ app/runtime/
 !app/user_test/crack_surface.png
 !app/user_test/corrosion_patch.png
 !app/user_test/normal_reference.png
-!app\user_test\cootion robo arm1.jpg
+
+
+!app/user_test/Robo oil leak2.jpg
+!app/user_test/corossion robo arm4.jpg
+!app/user_test/corosion robo.jpg
+!app/user_test/cootion robo arm.jpg
+!app/user_test/corrtion robo arm.jpg
+!app/user_test/vaccum leak.jpg
+!app/user_test/Robo oil leak.jpg
+
 # notebooks temp
 .ipynb_checkpoints/
 
