@@ -1,0 +1,10 @@
+﻿{
+  "scenario_id": "USER-TEST-005",
+  "asset_id": "BEARING-22",
+  "asset_type": "bearing_assembly",
+  "description": "Clean reference surface with no visible defect and stable telemetry.",
+  "location": "outer race inspection area",
+  "operating_state": "nominal_operation",
+  "image_path": "normal_reference.png",
+  "telemetry": { "failure_risk": 0.08, "predicted_rul": 145, "severity": "normal" }
+}

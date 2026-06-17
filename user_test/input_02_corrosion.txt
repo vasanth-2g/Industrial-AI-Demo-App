@@ -1,0 +1,10 @@
+﻿{
+  "scenario_id": "USER-TEST-002",
+  "asset_id": "VALVE-04",
+  "asset_type": "control_valve",
+  "description": "Corrosion patches around flange bolts after humid storage exposure.",
+  "location": "flange and bolt circle",
+  "operating_state": "idle_inspection",
+  "image_path": "corrosion_patch.png",
+  "telemetry": { "failure_risk": 0.48, "predicted_rul": 72, "severity": "warning" }
+}

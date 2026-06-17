@@ -1,0 +1,10 @@
+﻿{
+  "scenario_id": "USER-TEST-004",
+  "asset_id": "MOTOR-12",
+  "asset_type": "electric_motor",
+  "description": "Overheating discoloration on motor casing with high thermal risk and abnormal current draw.",
+  "location": "stator casing upper quadrant",
+  "operating_state": "high_load",
+  "image_path": "overheating_discoloration.png",
+  "telemetry": { "failure_risk": 0.91, "predicted_rul": 9, "severity": "critical" }
+}

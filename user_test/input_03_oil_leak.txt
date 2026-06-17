@@ -1,0 +1,10 @@
+﻿{
+  "scenario_id": "USER-TEST-003",
+  "asset_id": "GEARBOX-09",
+  "asset_type": "gearbox",
+  "description": "Dark oil leak trail under gearbox seal with moderate temperature increase.",
+  "location": "output shaft seal",
+  "operating_state": "continuous_operation",
+  "image_path": "oil_leak.png",
+  "telemetry": { "failure_risk": 0.67, "predicted_rul": 39, "severity": "warning" }
+}

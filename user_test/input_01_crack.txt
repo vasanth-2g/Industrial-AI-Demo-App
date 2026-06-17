@@ -1,0 +1,10 @@
+﻿{
+  "scenario_id": "USER-TEST-001",
+  "asset_id": "PUMP-17",
+  "asset_type": "centrifugal_pump",
+  "description": "Visible linear crack on pump housing with rising vibration and reduced remaining useful life.",
+  "location": "pump casing near bearing mount",
+  "operating_state": "loaded_operation",
+  "image_path": "crack_surface.png",
+  "telemetry": { "failure_risk": 0.82, "predicted_rul": 18, "severity": "critical" }
+}
