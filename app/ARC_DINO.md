@@ -164,8 +164,9 @@ The proposed improved flow is:
 
 ```text
 uploaded image
--> crop robot / inspected asset only
--> delete or ignore background
+-> object detection finds robot / inspected asset
+-> SAM segmentation creates robot mask
+-> remove background
 -> run DINOv2 only on robot crop
 -> generate defect overlay on crop
 -> send output to frontend
@@ -182,10 +183,21 @@ The notebook supports:
 ```text
 manual bounding box crop
 automatic GrabCut foreground crop
+open-vocabulary object detection + SAM segmentation
 DINOv2 anomaly detection on cropped image
 ```
 
-Manual crop is the most reliable for demo and plant images.
+Preferred order:
+
+```text
+1. Manual box if provided
+2. Object detection + SAM robot-only crop
+3. GrabCut foreground crop fallback
+```
+
+For production, object detection + SAM is the best direction because DINOv2
+should only inspect the robot/asset, not pipes, windows, walls, or background
+plant structure.
 
 ## Backend Files
 
@@ -227,7 +239,18 @@ This keeps DINOv2 frozen but improves anomaly comparison for the robot domain.
 
 ### Option 2: Add Robot Segmentation
 
-Add a segmentation model or manual ROI UI so only the robot is analyzed.
+Add a detector + segmenter so only the robot is analyzed.
+
+Recommended architecture:
+
+```text
+Camera/Image
+-> Object Detection (YOLO, open-vocabulary detector, or asset detector)
+-> Segmentation Mask (SAM)
+-> Background Removal
+-> Robot-only image
+-> DINOv2 anomaly localization
+```
 
 This is the best fix for background false positives.
 
@@ -253,6 +276,7 @@ DINOv2 frozen feature extractor: done
 normal patch memory anomaly scoring: done
 transparent defect overlay: done
 robot ROI crop notebook: done
-backend ROI crop integration: not yet
+object detection + SAM notebook flow: done
+backend detector/SAM integration: not yet
 trained fault classifier: not yet
 ```

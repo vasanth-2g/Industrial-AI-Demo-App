@@ -23,6 +23,12 @@ app/runtime/
 !user_test/crack_surface.png
 !user_test/corrosion_patch.png
 !user_test/normal_reference.png
+!app/user_test/
+!app/user_test/robot_corrosion.jpg
+!app/user_test/oil_leak.png
+!app/user_test/crack_surface.png
+!app/user_test/corrosion_patch.png
+!app/user_test/normal_reference.png
 
 # notebooks temp
 .ipynb_checkpoints/
