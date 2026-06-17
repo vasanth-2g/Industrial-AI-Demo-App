@@ -22,6 +22,26 @@ def resolve_hf_model(value: str) -> str:
 DEFAULT_HF_MODEL = os.environ.get("HF_LLM_MODEL", resolve_hf_model(_CONFIG_HF_MODEL))
 HF_MAX_NEW_TOKENS = int(os.environ.get("HF_LLM_MAX_NEW_TOKENS", str(_CONFIG_MAX_NEW_TOKENS)))
 _HF_PIPELINE: Any | None = None
+STATUS_RANK = {"normal": 0, "warning": 1, "critical": 2}
+
+
+def visual_evidence_floor(vision: dict[str, Any]) -> str:
+    if not bool(vision.get("is_anomaly")):
+        return "normal"
+
+    fault = str(vision.get("predicted_fault", "")).lower()
+    score = float(vision.get("anomaly_score", 0.0))
+    threshold = float(vision.get("evidence", {}).get("threshold", 0.35))
+
+    if fault == "crack" and score >= max(0.75, threshold):
+        return "critical"
+    return "warning"
+
+
+def higher_status(left: str, right: str) -> str:
+    left = left if left in STATUS_RANK else "normal"
+    right = right if right in STATUS_RANK else "normal"
+    return left if STATUS_RANK[left] >= STATUS_RANK[right] else right
 
 
 def classify(telemetry: dict[str, Any], vision: dict[str, Any]) -> str:
@@ -30,19 +50,30 @@ def classify(telemetry: dict[str, Any], vision: dict[str, Any]) -> str:
     vision_anomaly = bool(vision.get("is_anomaly"))
     vision_score = float(vision.get("anomaly_score", 0.0))
 
+    floor = visual_evidence_floor(vision)
+
     if telemetry_severity == "critical" or (telemetry_risk >= 0.75 and vision_anomaly):
         return "critical"
     if telemetry_severity == "warning" or telemetry_risk >= 0.5 or vision_anomaly or vision_score >= 0.5:
-        return "warning"
+        return higher_status("warning", floor)
     return "normal"
 
 
 def confidence_score(telemetry: dict[str, Any], vision: dict[str, Any], rag: dict[str, Any]) -> float:
     telemetry_risk = float(telemetry.get("failure_risk", 0.0))
+    telemetry_severity = str(telemetry.get("severity", "normal")).lower()
     vision_score = float(vision.get("anomaly_score", 0.0))
+    vision_anomaly = bool(vision.get("is_anomaly"))
     rag_results = rag.get("results") if isinstance(rag.get("results"), list) else []
     rag_score = float(rag_results[0].get("score", 0.0)) if rag_results else 0.0
-    score = 0.25 + 0.35 * min(vision_score, 1.0) + 0.25 * min(telemetry_risk, 1.0) + 0.15 * min(rag_score, 1.0)
+    score = 0.30
+    score += 0.42 * min(vision_score, 1.0) if vision_anomaly else 0.10 * min(vision_score, 1.0)
+    score += 0.18 * min(telemetry_risk, 1.0)
+    score += 0.10 * min(rag_score, 1.0)
+    if telemetry_severity in {"warning", "critical"} and vision_anomaly:
+        score += 0.08
+    elif vision_anomaly and telemetry_severity == "normal":
+        score -= 0.03
     return round(min(max(score, 0.0), 0.95), 4)
 
 
@@ -281,7 +312,11 @@ def generate_llm_rca(
     try:
         llm_result = call_huggingface(messages)
         merged = {**fallback, **llm_result}
-        merged["status"] = merged.get("classification", fallback["classification"])
+        llm_status = str(merged.get("classification", fallback["classification"])).lower()
+        evidence_status = fallback["classification"]
+        final_status = higher_status(llm_status, evidence_status)
+        merged["classification"] = final_status
+        merged["status"] = final_status
         merged["confidence"] = merged.get("confidence_score", fallback["confidence_score"])
         merged["llm"] = {
             "mode": "huggingface_transformers",

@@ -326,9 +326,9 @@
       </section>
 
       <section class="card span-3 metric-card result-card">
-        <div class="label">Predicted RUL</div>
+        <div class="label">Remaining Life</div>
         <div class="metric" id="rul"></div>
-        <div class="small">Telemetry source: C-MAPSS FD001 baseline</div>
+        <div class="small">Predicted remaining operating cycles from telemetry.</div>
       </section>
 
       <section class="card span-3 metric-card result-card">
@@ -340,7 +340,7 @@
       <section class="card span-3 metric-card result-card">
         <div class="label">RCA Confidence</div>
         <div class="metric" id="confidence"></div>
-        <div class="small">Capped because modalities are demo-linked.</div>
+        <div class="small">Confidence in the explanation from available evidence.</div>
       </section>
 
       <section class="card span-5 result-card">
@@ -349,8 +349,8 @@
       </section>
 
       <section class="card span-7 result-card">
-        <h2 class="section-title">Vision Heatmap</h2>
-        <img class="heatmap" id="heatmapImage" alt="Generated inspection heatmap" />
+        <h2 class="section-title">Vision Defect Location</h2>
+        <img class="heatmap" id="heatmapImage" alt="Marked inspection defect location" />
         <div class="footer-note" id="visionSummary"></div>
       </section>
 
@@ -381,6 +381,37 @@
   <script>
     const fmtPct = (value) => `${(Number(value) * 100).toFixed(2)}%`;
     const fmtNum = (value, digits = 3) => Number(value).toFixed(digits);
+    const titleCase = (value) => String(value || "unknown")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+
+    function humanRootCause(text, telemetry, vision) {
+      if (!text) return "";
+      const rul = Number(telemetry.predicted_rul);
+      const risk = fmtPct(telemetry.failure_risk);
+      const fault = titleCase(vision.predicted_fault).toLowerCase();
+      if (vision.is_anomaly) {
+        return `The inspection image shows a localized ${fault} indication. ` +
+          `Telemetry is currently ${telemetry.severity}, with about ${fmtNum(rul, 1)} remaining operating cycles and ${risk} failure risk.`;
+      }
+      return `No clear visual fault is detected. Telemetry is ${telemetry.severity}, with about ${fmtNum(rul, 1)} remaining operating cycles and ${risk} failure risk.`;
+    }
+
+    function humanEvidence(item, telemetry, vision, rag) {
+      if (item.source === "telemetry") {
+        return `About ${fmtNum(telemetry.predicted_rul, 1)} remaining operating cycles; failure risk ${fmtPct(telemetry.failure_risk)}; status ${telemetry.severity}.`;
+      }
+      if (item.source === "vision") {
+        const state = vision.is_anomaly ? "found" : "did not find";
+        return `Image analysis ${state} a ${titleCase(vision.predicted_fault).toLowerCase()} indication with confidence score ${fmtPct(vision.anomaly_score)}.`;
+      }
+      if (item.source === "rag") {
+        const count = rag && rag.results ? rag.results.length : 0;
+        const top = rag && rag.results ? rag.results.slice(0, 3).map((doc) => doc.document_id).join(", ") : "";
+        return `Retrieved ${count} matching maintenance references${top ? `, including ${top}` : ""}.`;
+      }
+      return item.observation;
+    }
 
     function pill(status) {
       const cls = status === "critical" ? "bad" : status === "warning" ? "warning" : "good";
@@ -401,7 +432,7 @@
       document.getElementById("statusPill").innerHTML = pill(rca.status);
       document.getElementById("scenario").textContent =
         `${rca.scenario_id} | ${rca.asset_id} | priority ${(rca.classification || rca.status || "unknown").toUpperCase()}`;
-      document.getElementById("rul").textContent = `${fmtNum(telemetry.predicted_rul, 1)} cycles`;
+      document.getElementById("rul").textContent = `${fmtNum(telemetry.predicted_rul, 1)} cycles left`;
       document.getElementById("risk").textContent = fmtPct(telemetry.failure_risk);
       document.getElementById("confidence").textContent = fmtPct(rca.confidence);
       document.getElementById("telemetrySeverity").textContent =
@@ -411,9 +442,9 @@
         `Scenario: ${telemetry.scenario_id}`,
         `Asset: ${telemetry.asset_id}`,
         `Model mode: ${telemetry.evidence.model_mode}`,
-        `History rows: ${telemetry.evidence.history_length}`,
-        `Last observed cycle: ${telemetry.evidence.last_observed_cycle}`,
-        `Alert threshold: ${fmtNum(telemetry.evidence.alert_threshold, 4)}`,
+        `History rows used: ${telemetry.evidence.history_length}`,
+        `Latest cycle: ${telemetry.evidence.last_observed_cycle}`,
+        `Alert threshold: ${fmtPct(telemetry.evidence.alert_threshold)}`,
         telemetry.evidence.model_error ? `Model note: ${telemetry.evidence.model_error}` : "Telemetry model ran successfully"
       ]);
 
@@ -423,14 +454,14 @@
         heatmap.style.display = "block";
       }
       document.getElementById("visionSummary").textContent =
-        `Vision: ${vision.predicted_fault}; score=${fmtNum(vision.anomaly_score, 4)}; ` +
-        `threshold=${fmtNum(vision.evidence.threshold, 4)}; mode=${vision.evidence.model_mode}`;
+        `Vision found ${titleCase(vision.predicted_fault).toLowerCase()} with score ${fmtPct(vision.anomaly_score)}.`;
 
       document.getElementById("rootCause").textContent =
-        `[${(rca.classification || rca.status || "unknown").toUpperCase()} | confidence=${fmtPct(rca.confidence_score ?? rca.confidence)}] ${rca.root_cause}`;
+        `[${(rca.classification || rca.status || "unknown").toUpperCase()} | confidence ${fmtPct(rca.confidence_score ?? rca.confidence)}] ` +
+        humanRootCause(rca.root_cause, telemetry, vision);
       document.getElementById("evidenceList").innerHTML = listItems(
         rca.evidence,
-        (item) => `<strong>${item.source}</strong>: ${item.observation}`
+        (item) => humanEvidence(item, telemetry, vision, rag)
       );
       document.getElementById("citations").innerHTML = rag && rag.results && rag.results.length
         ? `

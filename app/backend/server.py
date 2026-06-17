@@ -137,6 +137,7 @@ class DemoHandler(SimpleHTTPRequestHandler):
             },
         )
         payload: dict = {}
+        uploaded_image: dict = {}
 
         scenario_field = form["scenario"] if "scenario" in form else None
         if scenario_field is None and "payload" in form:
@@ -175,11 +176,16 @@ class DemoHandler(SimpleHTTPRequestHandler):
                         payload["input_bytes"] = len(data)
                         payload["input_parse_mode"] = "json" if parsed else "text"
                     else:
-                        payload["image_path"] = str(output_path)
-                        payload["image_filename"] = filename
-                        payload["image_bytes"] = len(data)
+                        uploaded_image = {
+                            "image_path": str(output_path),
+                            "image_filename": filename,
+                            "image_bytes": len(data),
+                        }
                 elif key not in {"scenario", "payload"}:
                     payload[key] = item.value
+
+        if uploaded_image:
+            payload.update(uploaded_image)
 
         return payload
 

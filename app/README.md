@@ -2,6 +2,12 @@
 
 This app runs end-to-end inference from frontend input.
 
+Architecture overview:
+
+```text
+app/APP_OVERVIEW.md
+```
+
 The frontend sends:
 
 - telemetry sensor data as scenario JSON
@@ -46,6 +52,21 @@ app/model_download_and_swap.ipynb
 
 Use it when you want to download a Hugging Face LLM, replace DINOv2, replace
 XGBoost models, or rebuild RAG vectors.
+
+Robot ROI crop notebook:
+
+```text
+app/robot_roi_before_dinov2.ipynb
+```
+
+Use it to test cropping the robot/asset region before DINOv2 so plant
+background does not dominate the visual anomaly overlay.
+
+DINOv2 vision architecture:
+
+```text
+app/ARC_DINO.md
+```
 
 Manual model config file:
 

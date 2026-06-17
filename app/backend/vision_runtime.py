@@ -169,6 +169,83 @@ def titled_panel(image: Image.Image, title: str, width: int, height: int) -> Ima
     return Image.fromarray(cv2.cvtColor(cv_panel, cv2.COLOR_BGR2RGB))
 
 
+def fault_overlay_style(predicted_fault: str) -> dict[str, Any]:
+    styles = {
+        "oil_leak": {"rgb": (37, 99, 235), "label": "Oil leak region"},
+        "crack": {"rgb": (239, 68, 68), "label": "Crack indication"},
+        "corrosion": {"rgb": (245, 158, 11), "label": "Corrosion region"},
+        "wear": {"rgb": (168, 85, 247), "label": "Wear region"},
+        "overheating": {"rgb": (249, 115, 22), "label": "Overheating region"},
+    }
+    return styles.get(predicted_fault, {"rgb": (20, 184, 166), "label": "Anomaly region"})
+
+
+def foreground_object_mask(rgb: np.ndarray) -> np.ndarray:
+    height, width = rgb.shape[:2]
+    rect = (
+        max(1, int(width * 0.12)),
+        max(1, int(height * 0.03)),
+        max(2, int(width * 0.76)),
+        max(2, int(height * 0.94)),
+    )
+    mask = np.zeros((height, width), np.uint8)
+    bgd_model = np.zeros((1, 65), np.float64)
+    fgd_model = np.zeros((1, 65), np.float64)
+    try:
+        cv2.grabCut(
+            cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR),
+            mask,
+            rect,
+            bgd_model,
+            fgd_model,
+            3,
+            cv2.GC_INIT_WITH_RECT,
+        )
+        foreground = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+    except cv2.error:
+        foreground = np.zeros((height, width), np.uint8)
+        x, y, w, h = rect
+        foreground[y:y + h, x:x + w] = 255
+
+    if int(np.count_nonzero(foreground)) < int(height * width * 0.02):
+        x, y, w, h = rect
+        foreground[y:y + h, x:x + w] = 255
+
+    kernel = np.ones((11, 11), np.uint8)
+    foreground = cv2.morphologyEx(foreground, cv2.MORPH_CLOSE, kernel)
+    return cv2.dilate(foreground, kernel, iterations=1)
+
+
+def refine_predicted_mask(heat_norm: np.ndarray, predicted_mask: np.ndarray, rgb: np.ndarray) -> np.ndarray:
+    cutoff = max(0.72, float(np.percentile(heat_norm, 92)))
+    mask = ((heat_norm >= cutoff).astype(np.uint8) * 255)
+    if int(mask.sum()) == 0:
+        cutoff = float(np.percentile(heat_norm, 97))
+        mask = ((heat_norm >= cutoff).astype(np.uint8) * 255)
+
+    foreground = foreground_object_mask(rgb)
+    focused = cv2.bitwise_and(mask, foreground)
+    if int(focused.sum()) > 0:
+        mask = focused
+
+    kernel_size = max(3, int(round(min(mask.shape[:2]) * 0.018)))
+    if kernel_size % 2 == 0:
+        kernel_size += 1
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return mask
+
+    min_area = max(24, int(mask.shape[0] * mask.shape[1] * 0.001))
+    clean = np.zeros_like(mask)
+    for contour in contours:
+        if cv2.contourArea(contour) >= min_area:
+            cv2.drawContours(clean, [contour], -1, 255, thickness=-1)
+    return clean if int(clean.sum()) else mask
+
+
 def save_dinov2_result_figure(
     image: Image.Image,
     heatmap: np.ndarray,
@@ -177,30 +254,20 @@ def save_dinov2_result_figure(
     predicted_fault: str,
     output_path: Path,
 ) -> None:
-    width, height = image.size
     heat_norm = normalized_heatmap(heatmap)
-    heat_uint8 = (heat_norm * 255).astype(np.uint8)
-    colored = cv2.applyColorMap(heat_uint8, cv2.COLORMAP_INFERNO)
-    colored_rgb = Image.fromarray(cv2.cvtColor(colored, cv2.COLOR_BGR2RGB))
-    mask_rgb = Image.fromarray((predicted_mask.astype(np.uint8) * 255)).convert("RGB")
+    rgb = np.asarray(image.convert("RGB")).copy()
+    mask = refine_predicted_mask(heat_norm, predicted_mask, rgb)
+    style = fault_overlay_style(predicted_fault)
+    color = tuple(int(channel) for channel in style["rgb"])
 
-    rgb = np.asarray(image.convert("RGB"))
-    jet = cv2.applyColorMap(heat_uint8, cv2.COLORMAP_JET)
-    overlay = cv2.addWeighted(cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR), 0.62, jet, 0.38, 0)
-    overlay_rgb = Image.fromarray(cv2.cvtColor(overlay, cv2.COLOR_BGR2RGB))
+    overlay = rgb.copy()
+    overlay[mask > 0] = color
+    marked = cv2.addWeighted(rgb, 0.70, overlay, 0.30, 0)
 
-    panel_w = 320
-    panel_h = int(panel_w * height / max(width, 1))
-    panels = [
-        titled_panel(image.convert("RGB"), predicted_fault, panel_w, panel_h),
-        titled_panel(mask_rgb, "Predicted Mask", panel_w, panel_h),
-        titled_panel(colored_rgb, "DINOv2 Heatmap", panel_w, panel_h),
-        titled_panel(overlay_rgb, f"score={score:.4f}", panel_w, panel_h),
-    ]
-    gap = 20
-    canvas = Image.new("RGB", (panel_w * 4 + gap * 3, panel_h + 28), "white")
-    for index, panel in enumerate(panels):
-        canvas.paste(panel, (index * (panel_w + gap), 0))
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        cv2.drawContours(marked, contours, -1, color, thickness=3, lineType=cv2.LINE_AA)
+    canvas = Image.fromarray(marked)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     canvas.save(output_path)
 
