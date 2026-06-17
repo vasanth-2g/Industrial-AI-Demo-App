@@ -1,0 +1,27 @@
+{
+  "telemetry": {
+    "model_dir": "backend/XGboost/telemetry_risk",
+    "rul_model_file": "xgb_rul_model.joblib",
+    "risk_model_file": "xgb_risk_model.joblib",
+    "feature_columns_file": "feature_columns.json",
+    "metadata_file": "metadata.json",
+    "notes": "Change model_dir if you place a new trained XGBoost telemetry model folder under app/."
+  },
+  "vision": {
+    "model_dir": "backend/vision_dinov2",
+    "dinov2_local_dir": "backend/vision_dinov2/facebook_dinov2_base",
+    "normal_patch_memory_file": "normal_patch_memory.pt",
+    "metadata_file": "metadata.json",
+    "notes": "If you replace DINOv2, update dinov2_local_dir. If you recalibrate normal images, replace normal_patch_memory_file."
+  },
+  "llm": {
+    "hf_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "max_new_tokens": 700,
+    "allow_model_download": false,
+    "notes": "Set hf_model to a local folder like backend/hf_models/Qwen2.5-0.5B-Instruct after downloading. Keep allow_model_download false unless you want runtime downloads."
+  },
+  "rag": {
+    "knowledge_dir": "backend/knowledge_rag",
+    "notes": "RAG indexes live here. Usually you do not need to edit this."
+  }
+}
